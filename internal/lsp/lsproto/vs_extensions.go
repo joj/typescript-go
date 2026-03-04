@@ -96,17 +96,16 @@ const KnownImageGUID = "{ae27a6b0-e345-4288-96df-5eaf394ee369}"
 
 // Image IDs from VS KnownImageIds catalog.
 const (
-	ImageIDClass      = 463
-	ImageIDInterface  = 1356
-	ImageIDEnum       = 745
-	ImageIDEnumMember = 753
-	ImageIDMethod     = 1874
-	ImageIDProperty   = 2449
-	ImageIDField      = 817
-	ImageIDVariable   = 3345
-	ImageIDConstant   = 585
-	ImageIDModule     = 1938
-	ImageIDType       = 3183
-	ImageIDParameter  = 2186
-	ImageIDKeyword    = 1452
+	ImageIDClass      = 473
+	ImageIDInterface  = 1608
+	ImageIDEnum       = 1131
+	ImageIDEnumMember = 1125
+	ImageIDMethod     = 1880
+	ImageIDProperty   = 2436
+	ImageIDField      = 1222
+	ImageIDVariable   = 1747
+	ImageIDConstant   = 620
+	ImageIDModule     = 1913
+	ImageIDType       = 3234
+	ImageIDParameter  = 2242
 )
