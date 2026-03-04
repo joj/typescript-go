@@ -905,9 +905,21 @@ function baselineAcceptTask(localBaseline, refBaseline) {
             return empty;
         }
 
-        // If root itself is entirely empty, there's nothing to collect
-        // (we exclude root). Otherwise, visit already pushed the right subtrees.
-        visit(root);
+        // If root is entirely empty, visit() returns true without collecting
+        // anything (since the root itself is excluded). In that case, collect
+        // root's direct child directories so they get removed.
+        if (visit(root)) {
+            try {
+                for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+                    if (entry.isDirectory()) {
+                        result.push(path.join(root, entry.name));
+                    }
+                }
+            }
+            catch {
+                // root doesn't exist or can't be read; nothing to do.
+            }
+        }
         return result;
     }
 
