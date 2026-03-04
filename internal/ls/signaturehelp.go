@@ -167,9 +167,10 @@ func createTypeHelpItems(ctx context.Context, symbol *ast.Symbol, argumentInfo *
 	}
 
 	sigInfo := &lsproto.SignatureInformation{
-		Label:         item.Label,
-		Documentation: nil,
-		Parameters:    &parameters,
+		Label:          item.Label,
+		Documentation:  nil,
+		Parameters:     &parameters,
+		ColorizedLabel: buildColorizedLabel(item.Label),
 	}
 
 	// If client supports per-signature activeParameter, set it on SignatureInformation
@@ -356,9 +357,10 @@ func (l *LanguageService) createSignatureHelpItems(ctx context.Context, candidat
 			}
 		}
 		sigInfo := &lsproto.SignatureInformation{
-			Label:         item.Label,
-			Documentation: documentation,
-			Parameters:    &parameters,
+			Label:          item.Label,
+			Documentation:  documentation,
+			Parameters:     &parameters,
+			ColorizedLabel: buildColorizedLabel(item.Label),
 		}
 
 		// If client supports per-signature activeParameter, set it on each SignatureInformation
@@ -1300,4 +1302,10 @@ func getApplicableRangeForTaggedTemplate(taggedTemplate *ast.TaggedTemplateExpre
 	}
 
 	return core.NewTextRange(applicableSpanStart, applicableSpanEnd-applicableSpanStart)
+}
+
+// buildColorizedLabel creates a VS ClassifiedTextElement for a signature label.
+func buildColorizedLabel(label string) *lsproto.ClassifiedTextElement {
+	runs := classifyQuickInfoText(label)
+	return lsproto.NewClassifiedTextElement(runs)
 }

@@ -7957,6 +7957,9 @@ type Hover struct {
 	// An optional range inside the text document that is used to
 	// visualize the hover, e.g. by changing the background color.
 	Range *Range `json:"range,omitzero"`
+
+	// VS extension: raw structured content for rich hover rendering.
+	RawContent any `json:"_vs_rawContent,omitzero"`
 }
 
 var _ json.UnmarshalerFrom = (*Hover)(nil)
@@ -15888,6 +15891,9 @@ type SignatureInformation struct {
 	//
 	// Since: 3.16.0
 	ActiveParameter *UintegerOrNull `json:"activeParameter,omitzero"`
+
+	// VS extension: colorized label for rich rendering.
+	ColorizedLabel any `json:"_vs_colorizedLabel,omitzero"`
 }
 
 var _ json.UnmarshalerFrom = (*SignatureInformation)(nil)

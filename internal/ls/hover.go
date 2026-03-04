@@ -47,17 +47,38 @@ func (l *LanguageService) ProvideHover(ctx context.Context, documentURI lsproto.
 		content = quickInfo + documentation
 	}
 
-	return lsproto.HoverOrNull{
-		Hover: &lsproto.Hover{
-			Contents: lsproto.MarkupContentOrStringOrMarkedStringWithLanguageOrMarkedStrings{
-				MarkupContent: &lsproto.MarkupContent{
-					Kind:  contentFormat,
-					Value: content,
-				},
+	hover := &lsproto.Hover{
+		Contents: lsproto.MarkupContentOrStringOrMarkedStringWithLanguageOrMarkedStrings{
+			MarkupContent: &lsproto.MarkupContent{
+				Kind:  contentFormat,
+				Value: content,
 			},
-			Range: hoverRange,
 		},
-	}, nil
+		Range: hoverRange,
+	}
+
+	// Build VS-extended raw content with icon and classified text
+	imageID := getSymbolImageID(symbol, node)
+	if imageID != nil {
+		classifiedText := buildClassifiedQuickInfo(quickInfo)
+		elements := []any{
+			lsproto.NewImageElement(lsproto.KnownImageGUID, imageID.id),
+			classifiedText,
+		}
+		if documentation != "" {
+			docText := lsproto.NewClassifiedTextElement([]*lsproto.ClassifiedTextRun{
+				lsproto.NewClassifiedTextRun(lsproto.ClassificationText, documentation),
+			})
+			hover.RawContent = lsproto.NewContainerElement(0,
+				lsproto.NewContainerElement(2, elements...),
+				docText,
+			)
+		} else {
+			hover.RawContent = lsproto.NewContainerElement(2, elements...)
+		}
+	}
+
+	return lsproto.HoverOrNull{Hover: hover}, nil
 }
 
 func (l *LanguageService) getQuickInfoAndDocumentationForSymbol(c *checker.Checker, symbol *ast.Symbol, node *ast.Node, contentFormat lsproto.MarkupKind) (string, string) {
@@ -784,4 +805,145 @@ func writeEntityNameParts(b *strings.Builder, node *ast.Node) {
 	case ast.KindJSDocNameReference:
 		writeEntityNameParts(b, node.Name())
 	}
+}
+
+// symbolImageInfo holds the VS image ID for a symbol kind.
+type symbolImageInfo struct {
+	id int
+}
+
+// getSymbolImageID determines the VS image ID for a symbol based on its flags.
+func getSymbolImageID(symbol *ast.Symbol, node *ast.Node) *symbolImageInfo {
+	if symbol == nil {
+		return nil
+	}
+	flags := symbol.Flags
+	switch {
+	case flags&ast.SymbolFlagsClass != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDClass}
+	case flags&ast.SymbolFlagsInterface != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDInterface}
+	case flags&ast.SymbolFlagsEnum != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDEnum}
+	case flags&ast.SymbolFlagsEnumMember != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDEnumMember}
+	case flags&(ast.SymbolFlagsFunction|ast.SymbolFlagsMethod) != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDMethod}
+	case flags&ast.SymbolFlagsProperty != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDProperty}
+	case flags&ast.SymbolFlagsAccessor != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDProperty}
+	case flags&ast.SymbolFlagsVariable != 0:
+		if symbol.ValueDeclaration != nil && ast.IsVarConst(symbol.ValueDeclaration) {
+			return &symbolImageInfo{id: lsproto.ImageIDConstant}
+		}
+		if symbol.ValueDeclaration != nil && ast.IsParameter(symbol.ValueDeclaration) {
+			return &symbolImageInfo{id: lsproto.ImageIDParameter}
+		}
+		return &symbolImageInfo{id: lsproto.ImageIDVariable}
+	case flags&ast.SymbolFlagsModule != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDModule}
+	case flags&ast.SymbolFlagsTypeAlias != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDType}
+	case flags&ast.SymbolFlagsTypeParameter != 0:
+		return &symbolImageInfo{id: lsproto.ImageIDType}
+	}
+	return nil
+}
+
+// buildClassifiedQuickInfo creates a ClassifiedTextElement from a quickInfo string.
+// It applies basic classification: keywords are classified as keywords,
+// the rest as plain text.
+func buildClassifiedQuickInfo(quickInfo string) *lsproto.ClassifiedTextElement {
+	runs := classifyQuickInfoText(quickInfo)
+	return lsproto.NewClassifiedTextElement(runs)
+}
+
+// classifyQuickInfoText breaks quickInfo text into classified runs.
+func classifyQuickInfoText(text string) []*lsproto.ClassifiedTextRun {
+	var runs []*lsproto.ClassifiedTextRun
+	keywords := map[string]bool{
+		"interface": true, "class": true, "type": true, "enum": true,
+		"function": true, "const": true, "let": true, "var": true,
+		"using": true, "namespace": true, "module": true, "constructor": true,
+		"extends": true, "implements": true, "import": true, "export": true,
+		"new": true, "this": true, "void": true, "null": true, "undefined": true,
+		"string": true, "number": true, "boolean": true, "any": true, "never": true,
+		"unknown": true, "object": true, "symbol": true, "bigint": true,
+		"true": true, "false": true, "readonly": true, "abstract": true,
+		"async": true, "await": true,
+	}
+
+	i := 0
+	runes := []rune(text)
+	for i < len(runes) {
+		ch := runes[i]
+		// Whitespace
+		if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+			start := i
+			for i < len(runes) && (runes[i] == ' ' || runes[i] == '\t' || runes[i] == '\n' || runes[i] == '\r') {
+				i++
+			}
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, string(runes[start:i])))
+			continue
+		}
+		// Punctuation
+		if ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' ||
+			ch == '<' || ch == '>' || ch == ',' || ch == ';' || ch == ':' || ch == '.' ||
+			ch == '=' || ch == '|' || ch == '&' || ch == '?' || ch == '!' {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, string(ch)))
+			i++
+			continue
+		}
+		// String literal
+		if ch == '\'' || ch == '"' || ch == '`' {
+			start := i
+			quote := ch
+			i++
+			for i < len(runes) && runes[i] != quote {
+				if runes[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			if i < len(runes) {
+				i++
+			}
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationStringLiteral, string(runes[start:i])))
+			continue
+		}
+		// Number
+		if ch >= '0' && ch <= '9' {
+			start := i
+			for i < len(runes) && ((runes[i] >= '0' && runes[i] <= '9') || runes[i] == '.') {
+				i++
+			}
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationNumberLiteral, string(runes[start:i])))
+			continue
+		}
+		// Identifier or keyword
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_' || ch == '$' {
+			start := i
+			for i < len(runes) && ((runes[i] >= 'a' && runes[i] <= 'z') || (runes[i] >= 'A' && runes[i] <= 'Z') || (runes[i] >= '0' && runes[i] <= '9') || runes[i] == '_' || runes[i] == '$') {
+				i++
+			}
+			word := string(runes[start:i])
+			classification := lsproto.ClassificationIdentifier
+			if keywords[word] {
+				classification = lsproto.ClassificationKeyword
+			}
+			runs = append(runs, lsproto.NewClassifiedTextRun(classification, word))
+			continue
+		}
+		// Ellipsis (...)
+		if ch == '.' && i+2 < len(runes) && runes[i+1] == '.' && runes[i+2] == '.' {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "..."))
+			i += 3
+			continue
+		}
+		// Other characters
+		runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, string(ch)))
+		i++
+	}
+	return runs
 }
