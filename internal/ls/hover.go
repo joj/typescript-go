@@ -11,6 +11,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/checker"
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
+	"github.com/microsoft/typescript-go/internal/diagnostics"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/scanner"
 )
@@ -859,91 +860,102 @@ func buildClassifiedQuickInfo(quickInfo string) *lsproto.ClassifiedTextElement {
 	return lsproto.NewClassifiedTextElement(runs)
 }
 
-// classifyQuickInfoText breaks quickInfo text into classified runs.
+// classifyQuickInfoText breaks quickInfo text into classified runs using the TypeScript scanner.
 func classifyQuickInfoText(text string) []*lsproto.ClassifiedTextRun {
 	var runs []*lsproto.ClassifiedTextRun
-	keywords := map[string]bool{
-		"interface": true, "class": true, "type": true, "enum": true,
-		"function": true, "const": true, "let": true, "var": true,
-		"using": true, "namespace": true, "module": true, "constructor": true,
-		"extends": true, "implements": true, "import": true, "export": true,
-		"new": true, "this": true, "void": true, "null": true, "undefined": true,
-		"string": true, "number": true, "boolean": true, "any": true, "never": true,
-		"unknown": true, "object": true, "symbol": true, "bigint": true,
-		"true": true, "false": true, "readonly": true, "abstract": true,
-		"async": true, "await": true,
+
+	// Handle leading prefix like "(property) ", "(method) ", "(alias) " etc.
+	// These are not valid TypeScript syntax, so we classify them before scanning.
+	remaining := text
+	for {
+		if after, found := strings.CutPrefix(remaining, "(property) "); found {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "("))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, "property"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, ")"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, " "))
+			remaining = after
+		} else if after, found := strings.CutPrefix(remaining, "(method) "); found {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "("))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, "method"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, ")"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, " "))
+			remaining = after
+		} else if after, found := strings.CutPrefix(remaining, "(accessor) "); found {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "("))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, "accessor"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, ")"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, " "))
+			remaining = after
+		} else if after, found := strings.CutPrefix(remaining, "(parameter) "); found {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "("))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, "parameter"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, ")"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, " "))
+			remaining = after
+		} else if after, found := strings.CutPrefix(remaining, "(enum member) "); found {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "("))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, "enum member"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, ")"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, " "))
+			remaining = after
+		} else if after, found := strings.CutPrefix(remaining, "(type parameter) "); found {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "("))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, "type parameter"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, ")"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, " "))
+			remaining = after
+		} else if after, found := strings.CutPrefix(remaining, "(alias) "); found {
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "("))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, "alias"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, ")"))
+			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, " "))
+			remaining = after
+		} else {
+			break
+		}
 	}
 
-	i := 0
-	runes := []rune(text)
-	for i < len(runes) {
-		ch := runes[i]
-		// Whitespace
-		if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
-			start := i
-			for i < len(runes) && (runes[i] == ' ' || runes[i] == '\t' || runes[i] == '\n' || runes[i] == '\r') {
-				i++
-			}
-			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationWhiteSpace, string(runes[start:i])))
-			continue
-		}
-		// Punctuation
-		if ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' ||
-			ch == '<' || ch == '>' || ch == ',' || ch == ';' || ch == ':' || ch == '.' ||
-			ch == '=' || ch == '|' || ch == '&' || ch == '?' || ch == '!' {
-			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, string(ch)))
-			i++
-			continue
-		}
-		// String literal
-		if ch == '\'' || ch == '"' || ch == '`' {
-			start := i
-			quote := ch
-			i++
-			for i < len(runes) && runes[i] != quote {
-				if runes[i] == '\\' {
-					i++
-				}
-				i++
-			}
-			if i < len(runes) {
-				i++
-			}
-			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationStringLiteral, string(runes[start:i])))
-			continue
-		}
-		// Number
-		if ch >= '0' && ch <= '9' {
-			start := i
-			for i < len(runes) && ((runes[i] >= '0' && runes[i] <= '9') || runes[i] == '.') {
-				i++
-			}
-			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationNumberLiteral, string(runes[start:i])))
-			continue
-		}
-		// Identifier or keyword
-		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_' || ch == '$' {
-			start := i
-			for i < len(runes) && ((runes[i] >= 'a' && runes[i] <= 'z') || (runes[i] >= 'A' && runes[i] <= 'Z') || (runes[i] >= '0' && runes[i] <= '9') || runes[i] == '_' || runes[i] == '$') {
-				i++
-			}
-			word := string(runes[start:i])
-			classification := lsproto.ClassificationIdentifier
-			if keywords[word] {
-				classification = lsproto.ClassificationKeyword
-			}
-			runs = append(runs, lsproto.NewClassifiedTextRun(classification, word))
-			continue
-		}
-		// Ellipsis (...)
-		if ch == '.' && i+2 < len(runes) && runes[i+1] == '.' && runes[i+2] == '.' {
-			runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationPunctuation, "..."))
-			i += 3
-			continue
-		}
-		// Other characters
-		runs = append(runs, lsproto.NewClassifiedTextRun(lsproto.ClassificationText, string(ch)))
-		i++
+	if remaining == "" {
+		return runs
 	}
+
+	// Use the TypeScript scanner for proper tokenization
+	s := scanner.NewScanner()
+	s.SetSkipTrivia(false)
+	s.SetText(remaining)
+	s.SetOnError(func(_ *diagnostics.Message, _ int, _ int, _ ...any) {})
+
+	for {
+		kind := s.Scan()
+		if kind == ast.KindEndOfFile {
+			break
+		}
+		tokenText := s.TokenText()
+		classification := tokenKindToClassification(kind)
+		runs = append(runs, lsproto.NewClassifiedTextRun(classification, tokenText))
+	}
+
 	return runs
+}
+
+// tokenKindToClassification maps a scanner token kind to a VS classification name.
+func tokenKindToClassification(kind ast.Kind) string {
+	switch {
+	case ast.IsKeywordKind(kind):
+		return lsproto.ClassificationKeyword
+	case ast.IsPunctuationKind(kind):
+		return lsproto.ClassificationPunctuation
+	case kind == ast.KindIdentifier:
+		return lsproto.ClassificationIdentifier
+	case kind == ast.KindStringLiteral || kind == ast.KindNoSubstitutionTemplateLiteral:
+		return lsproto.ClassificationStringLiteral
+	case kind == ast.KindNumericLiteral || kind == ast.KindBigIntLiteral:
+		return lsproto.ClassificationNumberLiteral
+	case kind == ast.KindWhitespaceTrivia || kind == ast.KindNewLineTrivia:
+		return lsproto.ClassificationWhiteSpace
+	case kind == ast.KindSingleLineCommentTrivia || kind == ast.KindMultiLineCommentTrivia:
+		return lsproto.ClassificationText
+	default:
+		return lsproto.ClassificationText
+	}
 }
