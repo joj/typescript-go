@@ -59,24 +59,26 @@ func (l *LanguageService) ProvideHover(ctx context.Context, documentURI lsproto.
 		Range: hoverRange,
 	}
 
-	// Build VS-extended raw content with icon and classified text
-	imageID := scriptElementKindToImageID(lsutil.GetSymbolKind(c, symbol, node))
-	if imageID >= 0 {
-		classifiedText := buildClassifiedQuickInfo(quickInfo)
-		elements := []any{
-			lsproto.NewImageElement(lsproto.KnownImageGUID, imageID),
-			classifiedText,
-		}
-		if documentation != "" {
-			docText := lsproto.NewClassifiedTextElement([]*lsproto.ClassifiedTextRun{
-				lsproto.NewClassifiedTextRun(lsproto.ClassificationText, documentation),
-			})
-			hover.RawContent = lsproto.NewContainerElement(0,
-				lsproto.NewContainerElement(2, elements...),
-				docText,
-			)
-		} else {
-			hover.RawContent = lsproto.NewContainerElement(2, elements...)
+	// Build VS-extended raw content with icon and classified text (only for VS clients)
+	if caps.SupportsVisualStudioExtensions {
+		imageID := scriptElementKindToImageID(lsutil.GetSymbolKind(c, symbol, node))
+		if imageID >= 0 {
+			classifiedText := buildClassifiedQuickInfo(quickInfo)
+			elements := []any{
+				lsproto.NewImageElement(lsproto.KnownImageGUID, imageID),
+				classifiedText,
+			}
+			if documentation != "" {
+				docText := lsproto.NewClassifiedTextElement([]*lsproto.ClassifiedTextRun{
+					lsproto.NewClassifiedTextRun(lsproto.ClassificationText, documentation),
+				})
+				hover.RawContent = lsproto.NewContainerElement(0,
+					lsproto.NewContainerElement(2, elements...),
+					docText,
+				)
+			} else {
+				hover.RawContent = lsproto.NewContainerElement(2, elements...)
+			}
 		}
 	}
 

@@ -167,10 +167,12 @@ func createTypeHelpItems(ctx context.Context, symbol *ast.Symbol, argumentInfo *
 	}
 
 	sigInfo := &lsproto.SignatureInformation{
-		Label:          item.Label,
-		Documentation:  nil,
-		Parameters:     &parameters,
-		ColorizedLabel: buildColorizedLabel(item.Label),
+		Label:         item.Label,
+		Documentation: nil,
+		Parameters:    &parameters,
+	}
+	if caps.SupportsVisualStudioExtensions {
+		sigInfo.ColorizedLabel = buildColorizedLabel(item.Label)
 	}
 
 	// If client supports per-signature activeParameter, set it on SignatureInformation
@@ -357,10 +359,12 @@ func (l *LanguageService) createSignatureHelpItems(ctx context.Context, candidat
 			}
 		}
 		sigInfo := &lsproto.SignatureInformation{
-			Label:          item.Label,
-			Documentation:  documentation,
-			Parameters:     &parameters,
-			ColorizedLabel: buildColorizedLabel(item.Label),
+			Label:         item.Label,
+			Documentation: documentation,
+			Parameters:    &parameters,
+		}
+		if caps.SupportsVisualStudioExtensions {
+			sigInfo.ColorizedLabel = buildColorizedLabel(item.Label)
 		}
 
 		// If client supports per-signature activeParameter, set it on each SignatureInformation

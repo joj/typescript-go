@@ -17793,6 +17793,10 @@ type ClientCapabilities struct {
 	//
 	// Since: 3.16.0
 	General *GeneralClientCapabilities `json:"general,omitzero"`
+
+	// VS extension: indicates the client supports Visual Studio-specific extensions
+	// such as _vs_rawContent on hover and _vs_colorizedLabel on signature help.
+	SupportsVisualStudioExtensions bool `json:"_vs_supportsVisualStudioExtensions,omitzero"`
 }
 
 type TextDocumentSyncOptions struct {
@@ -31760,6 +31764,8 @@ type ResolvedClientCapabilities struct {
 	//
 	// Since: 3.16.0
 	General ResolvedGeneralClientCapabilities `json:"general,omitzero"`
+	// VS extension: indicates the client supports Visual Studio-specific extensions.
+	SupportsVisualStudioExtensions bool `json:"_vs_supportsVisualStudioExtensions,omitzero"`
 }
 
 func ResolveClientCapabilities(v *ClientCapabilities) ResolvedClientCapabilities {
@@ -31767,10 +31773,11 @@ func ResolveClientCapabilities(v *ClientCapabilities) ResolvedClientCapabilities
 		return ResolvedClientCapabilities{}
 	}
 	return ResolvedClientCapabilities{
-		Workspace:        resolveWorkspaceClientCapabilities(v.Workspace),
-		TextDocument:     resolveTextDocumentClientCapabilities(v.TextDocument),
-		NotebookDocument: resolveNotebookDocumentClientCapabilities(v.NotebookDocument),
-		Window:           resolveWindowClientCapabilities(v.Window),
-		General:          resolveGeneralClientCapabilities(v.General),
+		Workspace:                      resolveWorkspaceClientCapabilities(v.Workspace),
+		TextDocument:                   resolveTextDocumentClientCapabilities(v.TextDocument),
+		NotebookDocument:               resolveNotebookDocumentClientCapabilities(v.NotebookDocument),
+		Window:                         resolveWindowClientCapabilities(v.Window),
+		General:                        resolveGeneralClientCapabilities(v.General),
+		SupportsVisualStudioExtensions: v.SupportsVisualStudioExtensions,
 	}
 }
