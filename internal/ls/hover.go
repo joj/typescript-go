@@ -12,6 +12,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
 	"github.com/microsoft/typescript-go/internal/diagnostics"
+	"github.com/microsoft/typescript-go/internal/ls/lsutil"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/scanner"
 )
@@ -59,11 +60,11 @@ func (l *LanguageService) ProvideHover(ctx context.Context, documentURI lsproto.
 	}
 
 	// Build VS-extended raw content with icon and classified text
-	imageID := getSymbolImageID(symbol, node)
-	if imageID != nil {
+	imageID := scriptElementKindToImageID(lsutil.GetSymbolKind(c, symbol, node))
+	if imageID >= 0 {
 		classifiedText := buildClassifiedQuickInfo(quickInfo)
 		elements := []any{
-			lsproto.NewImageElement(lsproto.KnownImageGUID, imageID.id),
+			lsproto.NewImageElement(lsproto.KnownImageGUID, imageID),
 			classifiedText,
 		}
 		if documentation != "" {
@@ -808,48 +809,44 @@ func writeEntityNameParts(b *strings.Builder, node *ast.Node) {
 	}
 }
 
-// symbolImageInfo holds the VS image ID for a symbol kind.
-type symbolImageInfo struct {
-	id int
-}
-
-// getSymbolImageID determines the VS image ID for a symbol based on its flags.
-func getSymbolImageID(symbol *ast.Symbol, node *ast.Node) *symbolImageInfo {
-	if symbol == nil {
-		return nil
+// scriptElementKindToImageID maps a ScriptElementKind to a VS image ID. Returns -1 if no image applies.
+func scriptElementKindToImageID(kind lsutil.ScriptElementKind) int {
+	switch kind {
+	case lsutil.ScriptElementKindClassElement, lsutil.ScriptElementKindLocalClassElement:
+		return lsproto.ImageIDClass
+	case lsutil.ScriptElementKindInterfaceElement:
+		return lsproto.ImageIDInterface
+	case lsutil.ScriptElementKindEnumElement:
+		return lsproto.ImageIDEnum
+	case lsutil.ScriptElementKindEnumMemberElement:
+		return lsproto.ImageIDEnumMember
+	case lsutil.ScriptElementKindFunctionElement, lsutil.ScriptElementKindLocalFunctionElement,
+		lsutil.ScriptElementKindMemberFunctionElement,
+		lsutil.ScriptElementKindConstructorImplementationElement,
+		lsutil.ScriptElementKindCallSignatureElement,
+		lsutil.ScriptElementKindConstructSignatureElement:
+		return lsproto.ImageIDMethod
+	case lsutil.ScriptElementKindMemberVariableElement, lsutil.ScriptElementKindMemberAccessorVariableElement,
+		lsutil.ScriptElementKindMemberGetAccessorElement, lsutil.ScriptElementKindMemberSetAccessorElement,
+		lsutil.ScriptElementKindIndexSignatureElement:
+		return lsproto.ImageIDProperty
+	case lsutil.ScriptElementKindVariableElement, lsutil.ScriptElementKindLocalVariableElement,
+		lsutil.ScriptElementKindLetElement,
+		lsutil.ScriptElementKindVariableUsingElement, lsutil.ScriptElementKindVariableAwaitUsingElement:
+		return lsproto.ImageIDVariable
+	case lsutil.ScriptElementKindConstElement:
+		return lsproto.ImageIDConstant
+	case lsutil.ScriptElementKindParameterElement:
+		return lsproto.ImageIDParameter
+	case lsutil.ScriptElementKindModuleElement:
+		return lsproto.ImageIDModule
+	case lsutil.ScriptElementKindTypeElement, lsutil.ScriptElementKindTypeParameterElement:
+		return lsproto.ImageIDType
+	case lsutil.ScriptElementKindAlias:
+		return lsproto.ImageIDModule
+	default:
+		return -1
 	}
-	flags := symbol.Flags
-	switch {
-	case flags&ast.SymbolFlagsClass != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDClass}
-	case flags&ast.SymbolFlagsInterface != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDInterface}
-	case flags&ast.SymbolFlagsEnum != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDEnum}
-	case flags&ast.SymbolFlagsEnumMember != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDEnumMember}
-	case flags&(ast.SymbolFlagsFunction|ast.SymbolFlagsMethod) != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDMethod}
-	case flags&ast.SymbolFlagsProperty != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDProperty}
-	case flags&ast.SymbolFlagsAccessor != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDProperty}
-	case flags&ast.SymbolFlagsVariable != 0:
-		if symbol.ValueDeclaration != nil && ast.IsVarConst(symbol.ValueDeclaration) {
-			return &symbolImageInfo{id: lsproto.ImageIDConstant}
-		}
-		if symbol.ValueDeclaration != nil && ast.IsParameter(symbol.ValueDeclaration) {
-			return &symbolImageInfo{id: lsproto.ImageIDParameter}
-		}
-		return &symbolImageInfo{id: lsproto.ImageIDVariable}
-	case flags&ast.SymbolFlagsModule != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDModule}
-	case flags&ast.SymbolFlagsTypeAlias != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDType}
-	case flags&ast.SymbolFlagsTypeParameter != 0:
-		return &symbolImageInfo{id: lsproto.ImageIDType}
-	}
-	return nil
 }
 
 // buildClassifiedQuickInfo creates a ClassifiedTextElement from a quickInfo string.
