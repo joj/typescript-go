@@ -65,7 +65,8 @@ func (l *LanguageService) getDocumentSymbolInformations(ctx context.Context, fil
 			}
 		}
 	}
-	flatten(docSymbols, nil)
+	globalContainer := "<global>"
+	flatten(docSymbols, &globalContainer)
 	return result
 }
 
@@ -561,6 +562,7 @@ func ProvideWorkspaceSymbols(
 		node := info.declaration
 		sourceFile := ast.GetSourceFileOfNode(node)
 		pos := astnav.GetStartOfNode(node, sourceFile, false /*includeJsDoc*/)
+		end := node.End()
 		container := getContainerNode(info.declaration)
 		var containerName *string
 		if container != nil {
@@ -569,7 +571,7 @@ func ProvideWorkspaceSymbols(
 		var symbol lsproto.SymbolInformation
 		symbol.Name = info.name
 		symbol.Kind = getSymbolKindFromNode(info.declaration)
-		symbol.Location = converters.ToLSPLocation(sourceFile, core.NewTextRange(pos, node.End()))
+		symbol.Location = converters.ToLSPLocation(sourceFile, core.NewTextRange(pos, end))
 		symbol.ContainerName = containerName
 		symbols[i] = &symbol
 	}

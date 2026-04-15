@@ -687,6 +687,10 @@ var handlers = sync.OnceValue(func() handlerMap {
 	registerRequestHandler(handlers, lsproto.CustomStopCPUProfileInfo, (*Server).handleStopCPUProfile)
 
 	registerRequestHandler(handlers, lsproto.CustomInitializeAPISessionInfo, (*Server).handleInitializeAPISession)
+
+	// VS-specific extensions
+	registerRequestHandler(handlers, lsproto.VSGetProjectContextsInfo, (*Server).handleVSGetProjectContexts)
+
 	return handlers
 })
 
@@ -928,6 +932,7 @@ func (s *Server) handleInitialize(ctx context.Context, params *lsproto.Initializ
 			Version: new(core.Version()),
 		},
 		Capabilities: &lsproto.ServerCapabilities{
+			VSProjectContextProvider: true,
 			PositionEncoding: new(s.positionEncoding),
 			TextDocumentSync: &lsproto.TextDocumentSyncOptionsOrKind{
 				Options: &lsproto.TextDocumentSyncOptions{
@@ -1476,4 +1481,34 @@ func (s *Server) handleStopCPUProfile(_ context.Context, _ any, _ *lsproto.Reque
 	}
 	s.logger.Info("CPU profile saved to: ", filePath)
 	return &lsproto.ProfileResult{File: filePath}, nil
+}
+
+func (s *Server) handleVSGetProjectContexts(ctx context.Context, params *lsproto.VSGetProjectContextsParams, _ *lsproto.RequestMessage) (*lsproto.VSProjectContextList, error) {
+	uri := params.TextDocument.Uri
+
+	projects, err := s.session.GetProjectsForFile(ctx, uri)
+	if err != nil {
+		return nil, err
+	}
+
+	contexts := make([]lsproto.VSProjectContext, 0, len(projects))
+	for _, p := range projects {
+		proj, ok := p.(*project.Project)
+		if !ok {
+			continue
+		}
+		label := proj.Name()
+		if label == "/dev/null/inferred" {
+			label = "Miscellaneous"
+		}
+		contexts = append(contexts, lsproto.VSProjectContext{
+			Label: label,
+			Id:    string(proj.Id()),
+		})
+	}
+
+	return &lsproto.VSProjectContextList{
+		ProjectContexts: contexts,
+		DefaultIndex:    0,
+	}, nil
 }

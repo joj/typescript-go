@@ -208,17 +208,28 @@ func (c *Converters) PositionToLineAndCharacter(script Script, position core.Tex
 
 type diagnosticOptions struct {
 	reportStyleChecksAsWarnings bool
+	showJSErrorsAsWarnings      bool
 	relatedInformation          bool
 	tagValueSet                 []lsproto.DiagnosticTag
 }
 
 // DiagnosticToLSPPull converts a diagnostic for pull diagnostics (textDocument/diagnostic)
-func DiagnosticToLSPPull(ctx context.Context, converters *Converters, diagnostic *ast.Diagnostic, reportStyleChecksAsWarnings bool) *lsproto.Diagnostic {
-	clientCaps := lsproto.GetClientCapabilities(ctx).TextDocument.Diagnostic
+func DiagnosticToLSPPull(ctx context.Context, converters *Converters, diagnostic *ast.Diagnostic, reportStyleChecksAsWarnings bool, showJSErrorsAsWarnings bool) *lsproto.Diagnostic {
+	clientCaps := lsproto.GetClientCapabilities(ctx).TextDocument
+	pullCaps := clientCaps.Diagnostic
+
+	// Fall back to publishDiagnostics tag support if pull diagnostics doesn't declare it.
+	// VS sets tagSupport on publishDiagnostics but not on diagnostic (pull).
+	tagValueSet := pullCaps.TagSupport.ValueSet
+	if len(tagValueSet) == 0 {
+		tagValueSet = clientCaps.PublishDiagnostics.TagSupport.ValueSet
+	}
+
 	return diagnosticToLSP(ctx, converters, diagnostic, diagnosticOptions{
-		reportStyleChecksAsWarnings: reportStyleChecksAsWarnings, // !!! get through context UserPreferences
-		relatedInformation:          clientCaps.RelatedInformation,
-		tagValueSet:                 clientCaps.TagSupport.ValueSet,
+		reportStyleChecksAsWarnings: reportStyleChecksAsWarnings,
+		showJSErrorsAsWarnings:      showJSErrorsAsWarnings,
+		relatedInformation:          pullCaps.RelatedInformation,
+		tagValueSet:                 tagValueSet,
 	})
 }
 
@@ -259,6 +270,14 @@ func diagnosticToLSP(ctx context.Context, converters *Converters, diagnostic *as
 
 	if opts.reportStyleChecksAsWarnings && severity == lsproto.DiagnosticSeverityError && styleCheckDiagnostics.Has(diagnostic.Code()) {
 		severity = lsproto.DiagnosticSeverityWarning
+	}
+
+	if opts.showJSErrorsAsWarnings && severity == lsproto.DiagnosticSeverityError && diagnostic.File() != nil {
+		fileName := diagnostic.File().FileName()
+		ext := tspath.GetAnyExtensionFromPath(fileName, nil, true)
+		if ext == tspath.ExtensionJs || ext == tspath.ExtensionJsx || ext == tspath.ExtensionMjs || ext == tspath.ExtensionCjs {
+			severity = lsproto.DiagnosticSeverityWarning
+		}
 	}
 
 	var relatedInformation []*lsproto.DiagnosticRelatedInformation

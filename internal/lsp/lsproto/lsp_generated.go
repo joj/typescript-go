@@ -15087,6 +15087,9 @@ type ServerCapabilities struct {
 
 	// Workspace specific server capabilities.
 	Workspace *WorkspaceOptions `json:"workspace,omitzero"`
+
+	// VS extension: whether the server supports textDocument/_vs_getProjectContexts.
+	VSProjectContextProvider bool `json:"_vs_projectContextProvider,omitzero"`
 }
 
 // Information about the server
@@ -23624,6 +23627,8 @@ func unmarshalParams(method Method, data []byte) (any, error) {
 		return unmarshalEmpty(data)
 	case MethodCustomInitializeAPISession:
 		return unmarshalPtrTo[InitializeAPISessionParams](data)
+	case MethodVSGetProjectContexts:
+		return unmarshalPtrTo[VSGetProjectContextsParams](data)
 	case MethodWorkspaceDidChangeWorkspaceFolders:
 		return unmarshalPtrTo[DidChangeWorkspaceFoldersParams](data)
 	case MethodWindowWorkDoneProgressCancel:
@@ -23835,6 +23840,8 @@ func unmarshalResult(method Method, data []byte) (any, error) {
 		return unmarshalValue[StopCPUProfileResponse](data)
 	case MethodCustomInitializeAPISession:
 		return unmarshalValue[CustomInitializeAPISessionResponse](data)
+	case MethodVSGetProjectContexts:
+		return unmarshalPtrTo[VSProjectContextList](data)
 	default:
 		return unmarshalAny(data)
 	}

@@ -109,3 +109,32 @@ const (
 	ImageIDType       = 3234
 	ImageIDParameter  = 2242
 )
+
+// VS project context types for textDocument/_vs_getProjectContexts
+
+// VSProjectContext represents a project context.
+type VSProjectContext struct {
+	Label string `json:"_vs_label"`
+	Id    string `json:"_vs_id"`
+	Kind  int    `json:"_vs_kind,omitzero"`
+}
+
+// VSProjectContextList is the response for textDocument/_vs_getProjectContexts.
+type VSProjectContextList struct {
+	ProjectContexts []VSProjectContext `json:"_vs_projectContexts"`
+	DefaultIndex    int                `json:"_vs_defaultIndex"`
+}
+
+// VSGetProjectContextsParams is the parameter for textDocument/_vs_getProjectContexts.
+type VSGetProjectContextsParams struct {
+	TextDocument TextDocumentIdentifier `json:"_vs_textDocument"`
+}
+
+func (p *VSGetProjectContextsParams) TextDocumentURI() DocumentUri {
+	return p.TextDocument.Uri
+}
+
+// Method and RequestInfo for _vs_getProjectContexts.
+const MethodVSGetProjectContexts Method = "textDocument/_vs_getProjectContexts"
+
+var VSGetProjectContextsInfo = RequestInfo[*VSGetProjectContextsParams, *VSProjectContextList]{Method: MethodVSGetProjectContexts}

@@ -22,7 +22,7 @@ func NewDefaultUserPreferences() *UserPreferences {
 		ProvideRefactorNotApplicableReason: true,
 		DisplayPartsForJSDoc:               true,
 		DisableLineTextInReferences:        true,
-		ReportStyleChecksAsWarnings:        true,
+		ReportStyleChecksAsWarnings:        false,
 
 		ExcludeLibrarySymbolsInNavTo: true,
 	}
@@ -155,6 +155,7 @@ type UserPreferences struct {
 	DisableLineTextInReferences bool // !!!
 	DisplayPartsForJSDoc        bool // !!!
 	ReportStyleChecksAsWarnings bool // !!! If this changes, we need to ask the client to recompute diagnostics
+	ShowJSErrorsAsWarnings      bool // If true, report JS diagnostic errors as warnings
 }
 
 type InlayHintsPreferences struct {
@@ -406,6 +407,8 @@ func (p *UserPreferences) ParseWorker(config map[string]any) *UserPreferences {
 			p.parseWorkspaceSymbols(values)
 		case "format":
 			p.FormatCodeSettings.Parse(values)
+		case "diagnostics":
+			p.parseDiagnostics(values)
 		case "tsserver":
 			// !!!
 		case "tsc":
@@ -427,6 +430,21 @@ func (p *UserPreferences) parseAll(prefs any) {
 	}
 	for name, value := range prefsMap {
 		p.Set(name, value)
+	}
+}
+
+func (p *UserPreferences) parseDiagnostics(prefs any) {
+	diagnosticsPrefs, ok := prefs.(map[string]any)
+	if !ok {
+		return
+	}
+	for name, value := range diagnosticsPrefs {
+		switch name {
+		case "showJSErrorsAsWarnings":
+			if v, ok := value.(bool); ok {
+				p.ShowJSErrorsAsWarnings = v
+			}
+		}
 	}
 }
 
